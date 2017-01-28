@@ -49,7 +49,8 @@ void setStreamSamplingRate(int rate) {
 }
 
 // Communication
-WebUSBCDC webUSB(0x1209, 0x0001, 0x0001, true);
+// VID/PID assigned here: https://github.com/pidcodes/pidcodes.github.com/blob/master/1209/D017/index.md
+WebUSBCDC webUSB(0x1209, 0xD017, 0x0001, true);
 
 uint8_t* rbuf;
 uint32_t rbuf_len = 0;
@@ -96,6 +97,7 @@ void sendHardwareInformation() {
 #elif defined(TARGET_KL46Z)
     sendString("\"magnetometer\",\n");
     sendString("\"lightsensor\",\n");
+    sendString("\"lcd4num\",\n");
 #endif
     sendString("\"touchsensor\"\n");
     sendString("]}");
@@ -124,10 +126,11 @@ void handleCMD(uint8_t* cmd_buf, uint32_t size) {
         setRGB(params[0], params[1], params[2]);
 #elif defined(TARGET_KL46Z)
     } else if (strncmp(cmdPtr,"SETLCD",6) == 0){
-        // TODO:  Set LCD string...
+        // TODO:  Set LCD string, currently only number
+        sscanf(valPtr,"%d",&params[0]);
+        lcd.printf("%4d", params[0]);
 #endif
     } else if (strncmp(cmdPtr,"SETRTE",6) == 0){
-        sscanf(valPtr,"%i",&params[0]);
         setStreamSamplingRate(params[0]);
     } else if (strncmp(cmdPtr,"STRTCH",6) == 0){
         sscanf(valPtr,"%i",&touchStreaming);
@@ -167,13 +170,17 @@ int main()
 
     currentState = IDLE_STATE;
 
-    // Indicate power on with green LED
+#if defined(TARGET_KL25Z)
+    // Indicate power on with green LED (find alternative for KL46Z, e.g LCD)
     if (accLog)
         setRGB(0,255,0);
     else {
         setRGB(255,0,0);
         while(1);
     }
+#elif defined(TARGET_KL46Z)
+    lcd.printf("RDY ");
+#endif
 
 
     // Start the timer - used for precision sampling rate
@@ -230,22 +237,30 @@ int main()
                     lcd.printf(lcdMessage);
 #endif
                 } else if (count == 0)
+#if defined(TARGET_KL25Z)
                     setRGB(0,255,0);
+#elif defined(TARGET_KL46Z)
+                    lcd.printf("RDY ");
+#endif
                 else
+#if defined(TARGET_KL25Z)
                     setRGB(0,0,0);
+#elif defined(TARGET_KL46Z)
+                    lcd.printf("    ");
+#endif
                 break;
             case ACC_READY_STATE:
-#if defined(TARGET_KL46Z)
-                    lcd.printf("ACCR");
-#endif
+#if defined(TARGET_KL25Z)
                 setRGB(255,0,0);
+#elif defined(TARGET_KL46Z)
+                lcd.printf("ACCR");
+#endif
                 // Blink red LED for 5s to indicate logging will start
                 for (int i=0; i<10; i++) {
                     wait_ms(500);
 #if defined(TARGET_KL25Z)
                     setRGB((i&1?0:255),0,0);
-#endif
-#if defined(TARGET_KL46Z)
+#elif defined(TARGET_KL46Z)
                     sprintf(lcdMessage, "-%2ds", (10-i)>>1);
                     lcd.printf(lcdMessage);
 #endif
@@ -254,7 +269,11 @@ int main()
                 // The following line is commented out (for now) as we get a crash if we send data and are not connected.
                 if (sendNotifications)
                     sendString("{\"datatype\":\"Notification\",\"data\":\"LoggingStarted\"}\n");
+#if defined(TARGET_KL25Z)
                 setRGB(255,0,0);
+#elif defined(TARGET_KL46Z)
+                lcd.printf("ACCR");
+#endif
                 accLoggedDataLength = ACC_LOG_LENGTH*3;
                 timer.reset();
                 timer.start();
@@ -287,7 +306,9 @@ int main()
                 if (sendNotifications)
                     sendString("{\"datatype\":\"Notification\",\"data\":\"LoggingEnded\"}\n");
                 // Set green LED to indicate logging is done
+#if defined(TARGET_KL25Z)
                 setRGB(0,255,0);
+#endif
                 currentState = IDLE_STATE;  // Done, switch back
                 break;
             case GET_LOG_STATE:
