@@ -108,6 +108,12 @@ int params[10];
 void handleCMD(uint8_t* cmd_buf, uint32_t size) {
     // very crude "json" parsing. We should put e.g. picoJSON in place here
 
+    // Send help string if the command is too short to make sense.
+    if(size < 12) {
+        sendString(helpString);
+        return;
+    }
+
     char *cmdPtr = (char*)(&cmd_buf[2]);
     char *valPtr = (char*)(&cmd_buf[10]);
 
