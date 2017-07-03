@@ -452,6 +452,29 @@ uint8_t * WebUSBCDC::stringIserialDesc() {
     return stringIserialDescriptor;
 }
 
+#if 0
+uint8_t * WebUSBCDC::urlIlandingPage() {
+    static uint8_t urlIlandingPageDescriptor[] = {
+        0x11,                  /* bLength */
+        WEBUSB_URL,            /* bDescriptorType */
+        WEBUSB_URL_SCHEME_HTTP,/* bScheme */
+        'l','o','c','a','l','h','o','s','t',':','8','0','0','0', /* URL - localhost:8000 */
+    };
+    return urlIlandingPageDescriptor;
+}
+#else
+uint8_t * WebUSBCDC::urlIlandingPage() {
+    static uint8_t urlIlandingPageDescriptor[] = {
+        0x16,                  /* bLength */
+        WEBUSB_URL,            /* bDescriptorType */
+        WEBUSB_URL_SCHEME_HTTPS,/* bScheme */
+        'e','m','p','i','r','i','k','i','t','.','g','i','t','h','u','b','.','i','o',
+    };
+    return urlIlandingPageDescriptor;
+}
+#endif
+
+// Deprecated: to be removed when in stable chrome
 #define NUM_ORIGINS 1
 #define TOTAL_ORIGINS_LENGTH (WEBUSB_DESCRIPTOR_SET_LENGTH + \
                               WEBUSB_CONFIGURATION_SUBSET_LENGTH + \
@@ -489,17 +512,4 @@ uint8_t * WebUSBCDC::urlIallowedOrigin() {
     };
     return urlIallowedOriginDescriptor;
 }
-
-uint8_t * WebUSBCDC::urlIlandingPage() {
-    static uint8_t urlIlandingPageDescriptor[] = {
-        0x11,                  /* bLength */
-        WEBUSB_URL,            /* bDescriptorType */
-        WEBUSB_URL_SCHEME_HTTP,/* bScheme */
-        'l','o','c','a','l','h','o','s','t',':','8','0','0','0', /* URL - localhost:8000 */
-    };
-    return urlIlandingPageDescriptor;
-}
-
-
-
 
