@@ -70,7 +70,7 @@ enum STATE_TYPE
     GET_LOG_STATE,
 };
 
-const char versionString[] = "17.07.001";
+const char versionString[] = "17.07.002";
 
 char helpString[] =
     "{\"msg\":["

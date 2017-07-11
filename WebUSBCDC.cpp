@@ -91,7 +91,11 @@ WebUSBCDC::WebUSBCDC(uint16_t vendor_id, uint16_t product_id, uint16_t product_r
     }
 }
 
+
+
 char endl_str[] = "\r\n";
+
+//#define __DEBUG
 
 #ifdef __DEBUG
 Serial pc(USBTX, USBRX); // tx, rx
@@ -112,86 +116,60 @@ bool WebUSBCDC::USBCallback_request() {
     }
 #endif
 
-    // Handle the Microsoft OS Descriptors 1.0 special string descriptor request
-    if ((transfer->setup.bmRequestType.Type == STANDARD_TYPE) &&
-        (transfer->setup.bRequest == GET_DESCRIPTOR) &&
-        (DESCRIPTOR_TYPE(transfer->setup.wValue) == STRING_DESCRIPTOR) &&
-        (DESCRIPTOR_INDEX(transfer->setup.wValue) == 0xEE))
-    {
-        static uint8_t msftStringDescriptor[] = {
-            0x12,                                      /* bLength */
-            STRING_DESCRIPTOR,                         /* bDescriptorType */
-            'M',0,'S',0,'F',0,'T',0,'1',0,'0',0,'0',0, /* qWSignature - MSFT100 */
-            WINUSB_VENDOR_CODE,                        /* bMS_VendorCode */
-            0x00,                                      /* bPad */
-        };
-
-        transfer->remaining = msftStringDescriptor[0];
-        transfer->ptr = msftStringDescriptor;
-        transfer->direction = DEVICE_TO_HOST;
-        success = true;
-    }
-
-    // Process Microsoft OS Descriptors 1.0 Compatible ID requests
-    else if ((transfer->setup.bmRequestType.Type == VENDOR_TYPE) &&
+    if ((transfer->setup.bmRequestType.Type == VENDOR_TYPE) &&
              (transfer->setup.bmRequestType.Recipient == DEVICE_RECIPIENT) &&
-             (transfer->setup.bRequest == WINUSB_VENDOR_CODE) &&
-             (transfer->setup.wIndex == WINUSB_GET_COMPATIBLE_ID_FEATURE_DESCRIPTOR))
+             (transfer->setup.bRequest == WINUSB_VENDOR_CODE))
     {
-        static uint8_t msftCompatibleIdDescriptor[] = {
-            0x28, 0x00, 0x00, 0x00,         /* dwLength */
-            LSB(COMPATIBLE_ID_VERSION_1_0), /* bcdVersion (LSB) */
-            MSB(COMPATIBLE_ID_VERSION_1_0), /* bcdVersion (MSB) */
-            LSB(WINUSB_GET_COMPATIBLE_ID_FEATURE_DESCRIPTOR), /* wIndex (LSB) */
-            MSB(WINUSB_GET_COMPATIBLE_ID_FEATURE_DESCRIPTOR), /* wIndex (MSB) */
-            0x01,
-            0, 0, 0, 0, 0, 0, 0,            /* reserved */
-            WEBUSB_INTERFACE_NUMBER,        /* bFirstInterfaceNumber */
-            0x00,                           /* reserved */
-            'W','I','N','U','S','B',0,0,    /* compatible ID - WINUSB */
-            0, 0, 0, 0, 0, 0, 0, 0,         /* subCompatibleID */
-            0, 0, 0, 0, 0, 0,               /* reserved */
+        static uint8_t msos20Descriptor[] = {
+            0x0A, 0x00,  // Section size
+            0x00, 0x00,  // MS OS 2.0 descriptor set header
+            0x00, 0x00, 0x03, 0x06,  // Windows version 8.1 (0x06030000)
+            0xB2, 0x00,  // Size, MS OS 2.0 descriptor set (total)
+
+            // Configuration subset header
+            0x08, 0x00,  // Section size
+            0x01, 0x00,  // DescriptorType
+            0x00,        // ConfigurationValue
+            0x00,        // Reserved
+            0xA8, 0x00,  // TotalLength of this subset header
+
+            // Function subset header
+            0x08, 0x00,  // Section size
+            0x02, 0x00,  // DescriptorType
+            WEBUSB_INTERFACE_NUMBER,  // WebUSB interface number (we don't need one for USBCDC)
+            0x00,        // Reserved
+            0xA0, 0x00,  // TotalLength of this subset header
+
+            // Compatible ID descriptor
+            0x14, 0x00,  // Section size
+            0x03, 0x00,  // DescriptorType (MS OS 2.0 compatible) 
+            'W','I','N','U','S','B',0,0,    // compatible ID - WINUSB
+            0, 0, 0, 0, 0, 0, 0, 0,         // subCompatibleID
+
+            // Extended properties descriptor with interface GUID
+            0x84, 0x00,   // Section size
+            0x04, 0x00,   // DescriptorType
+            0x07, 0x00,   // PropertyDataType
+            0x2A, 0x00,   // PropertyNameLength
+
+            // Property name : DeviceInterfaceGUIDs
+            'D',0,'e',0,'v',0,'i',0,'c',0,'e',0,'I',0,'n',0,'t',0,'e',0,'r',0,'f',0,'a',0,'c',0,'e',0,'G',0,'U',0,'I',0,'D',0,'s',0,0,0,
+
+            0x50, 0x00,   // wPropertyDataLength
+
+            // Property data: {F7008E18-7F37-4E17-8C1A-D37E18C066E4} - generated with https://www.guidgenerator.com/
+            '{',0,'F',0,'7',0,'0',0,'0',0,'8',0,'E',0,'1',0,'8',0,'-',0,'7',0,'F',0,'3',0,'7',0,'-',0,'4',0,
+            'E',0,'1',0,'7',0,'-',0,'8',0,'C',0,'1',0,'A',0,'-',0,'D',0,'3',0,'7',0,'E',0,'1',0,'8',0,'C',0,
+            '0',0,'6',0,'6',0,'E',0,'4',0,'}',0,0,0,0,0,0
         };
 
-        transfer->remaining = sizeof(msftCompatibleIdDescriptor);
-        transfer->ptr = msftCompatibleIdDescriptor;
+
+        transfer->remaining = sizeof(msos20Descriptor);
+        transfer->ptr = msos20Descriptor;
         transfer->direction = DEVICE_TO_HOST;
         success = true;
     }
 
-    // Process Microsoft OS Descriptors 1.0 Extended Properties ID requests
-    // BEWARE: The following descriptor is work in progress - doesn't seem to be 100% correct yet.
-    else if ((transfer->setup.bmRequestType.Type == VENDOR_TYPE) &&
-             (transfer->setup.bmRequestType.Recipient == INTERFACE_RECIPIENT) &&
-             (transfer->setup.bRequest == WINUSB_VENDOR_CODE) &&
-             //(transfer->setup.wValue == WEBUSB_INTERFACE_NUMBER) &&
-             ((transfer->setup.wIndex == WINUSB_GET_EXTENDED_PROPERTIES_OS_FEATURE_DESCRIPTOR) ||
-              (transfer->setup.wIndex == WEBUSB_INTERFACE_NUMBER)))
-    {
-        static uint8_t msftExtendedPropertiesDescriptor[] = {
-            0x8c, 0x00, 0x00, 0x00,         /* dwLength */
-            LSB(COMPATIBLE_ID_VERSION_1_0), /* bcdVersion (LSB) */
-            MSB(COMPATIBLE_ID_VERSION_1_0), /* bcdVersion (MSB) */
-            LSB(WINUSB_GET_EXTENDED_PROPERTIES_OS_FEATURE_DESCRIPTOR), /* wIndex (LSB) */
-            MSB(WINUSB_GET_EXTENDED_PROPERTIES_OS_FEATURE_DESCRIPTOR), /* wIndex (MSB) */
-            0x01, 0x00,                     // Number of sections
-            0x82, 0x00, 0x00, 0x00,         // Size of property section
-            0x01, 0x00, 0x00, 0x00,         // Data type (1 = REG_SZ)
-            0x28, 0x00,                     // property name length (40)
-            'D',0,'e',0,'v',0,'i',0,'c',0,'e',0,'I',0,'n',0,'t',0,'e',0,'r',0,'f',0,'a',0,'c',0,'e',0,'G',0,'U',0,'I',0,'D',0,0,0,
-            0x4e, 0x00, 0x00, 0x00,         // property data length (78)
-            '{',0,'F',0,'3',0,'5',0,'E',0,'1',0,'B',0,'9',0,
-            'F',0,'-',0,'9',0,'E',0,'F',0,'1',0,'-',0,'4',0,
-            'D',0,'7',0,'1',0,'-',0,'9',0,'9',0,'D',0,'C',0,
-            '-',0,'B',0,'1',0,'C',0,'B',0,'C',0,'8',0,'0',0,
-            'E',0,'C',0,'1',0,'4',0,'3',0,'}',0,  0,0,
-        };
-
-        transfer->remaining = sizeof(msftExtendedPropertiesDescriptor);
-        transfer->ptr = msftExtendedPropertiesDescriptor;
-        transfer->direction = DEVICE_TO_HOST;
-        success = true;
-    }
     // Process CDC class-specific requests
     if (transfer->setup.bmRequestType.Type == CLASS_TYPE) {
         switch (transfer->setup.bRequest) {
