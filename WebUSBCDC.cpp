@@ -81,25 +81,46 @@ static uint8_t cdc_line_coding[7]= {0x80, 0x25, 0x00, 0x00, 0x00, 0x00, 0x08};
 #define WEBUSB_ENDPOINT_IN                              (EP5IN)
 #define WEBUSB_ENDPOINT_OUT                             (EP5OUT)
 
+#define UNIQUE_SERIAL_DESCRIPTOR_LEN (2 + (20 * 2))
+static uint8_t _uniqueSerial[UNIQUE_SERIAL_DESCRIPTOR_LEN];  // Size of serial number descriptor with unique ID
+
 
 WebUSBCDC::WebUSBCDC(uint16_t vendor_id, uint16_t product_id, uint16_t product_release, bool connect)
     :  WebUSBDevice(vendor_id, product_id, product_release)
 {
+    // Use unique ID from the KL25Z/KL46Z as USB serial number
+    this->makeUniqueSerialNumber();
+
     cdc_connected = false;
     if (connect) {
         WebUSBDevice::connect();
     }
 }
 
-
-
-char endl_str[] = "\r\n";
-
 //#define __DEBUG
 
 #ifdef __DEBUG
 Serial pc(USBTX, USBRX); // tx, rx
 #endif
+
+
+void WebUSBCDC::makeUniqueSerialNumber()
+{
+    sprintf((char*)_uniqueSerial,"%04X%08X%08X",
+        *((unsigned int *)0x40048058),
+        *((unsigned int *)0x4004805C),
+        *((unsigned int *)0x40048060));
+
+    // convert to double byte
+    for(int i = UNIQUE_SERIAL_DESCRIPTOR_LEN-3; i>=0 ; i--) {
+        _uniqueSerial[i+2] = i&1 ? 0 : _uniqueSerial[i>>1];
+    }
+
+    _uniqueSerial[0] = UNIQUE_SERIAL_DESCRIPTOR_LEN;
+    _uniqueSerial[1] = STRING_DESCRIPTOR;
+}
+
+char endl_str[] = "\r\n";
 
 bool WebUSBCDC::USBCallback_request() {
     bool success = false;
@@ -422,12 +443,16 @@ uint8_t * WebUSBCDC::stringImanufacturerDesc() {
 }
 
 uint8_t * WebUSBCDC::stringIserialDesc() {
+#if 0
     static uint8_t stringIserialDescriptor[] = {
         0x0C,                                             /*bLength*/
         STRING_DESCRIPTOR,                                /*bDescriptorType 0x03*/
         '0',0,'0',0,'0',0,'0',0,'1',0,                    /*bString iSerial - 00001*/
     };
     return stringIserialDescriptor;
+#else
+    return _uniqueSerial;
+#endif
 }
 
 #if 0

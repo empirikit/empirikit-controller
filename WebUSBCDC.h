@@ -43,6 +43,7 @@ public:
 
 private:
     volatile bool cdc_connected;
+    void makeUniqueSerialNumber();
 };
 
 #endif
