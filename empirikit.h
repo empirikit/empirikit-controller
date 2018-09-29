@@ -48,14 +48,15 @@ TSISensor tsi;
 
 // Communication
 int sendNotifications = 0;
+int binaryMode = 0;
 
 #define DEFAULT_SAMPLING_RATE 50 // Sampling rate in Hz
-#define ACC_LOG_LENGTH (DEFAULT_SAMPLING_RATE*10) // Allow 10s sampling log for 50 Hz
+#define ACC_LOG_LENGTH (DEFAULT_SAMPLING_RATE*8) // Allow 10s sampling log for 50 Hz
 #define ACC_LOG_SIZE (ACC_LOG_LENGTH*3) // Allow 18s sampling log for 50 Hz
 #define SAMPLING_WAIT (1000/DEFAULT_SAMPLING_RATE)
 #define SAMPLING_WAIT_US (1000*SAMPLING_WAIT)
 
-int _stream_sampling_rate = DEFAULT_SAMPLING_RATE;
+uint16_t _stream_sampling_rate = DEFAULT_SAMPLING_RATE;
 int _stream_sampling_wait_us = SAMPLING_WAIT_US;
 
 enum STATE_TYPE
@@ -70,7 +71,7 @@ enum STATE_TYPE
     GET_LOG_STATE,
 };
 
-const char versionString[] = "18.09.001";
+const char versionString[] = "18.09.002";
 
 char helpString[] =
     "{\"msg\":["
@@ -85,6 +86,7 @@ char helpString[] =
     "\"SETRTE => Set sampling rate ({'SETRTE':x}, 1 <= x <= 100)\","
     "\"STRTCH => Stream touch values ({'STRTCH':x}, x = 0(off) or 1(on))\","
     "\"STRACC => Stream accelerometer values ({'STRTCH':x}, x = 0(off) or 1(on))\","
+    "\"SETBIN => Set binary streaming mode and disable all JSON msgs ({'SETBIN':x}, x = 0(off) or 1(on))\","
     "\"LOGACC => Start logging accelerometer data ({'LOGACC':1})\","
     "\"GETLOG => Get logged accelerometer data, ({'GETLOG':1})\","
     "\"Visit www.empirikit.com for more information.\"]}";

@@ -44,7 +44,7 @@ void setStreamSamplingRate(int rate) {
     if (rate < 1 || rate > 100)
         return;
 
-    _stream_sampling_rate = rate;
+    _stream_sampling_rate = (uint16_t)rate;
     _stream_sampling_wait_us = (1000000 / rate);
 }
 
@@ -62,8 +62,10 @@ uint32_t read_size_cdc;
 
 char* sbuf;
 
-
 void sendString(const char* str, bool isCDC=false) {
+    if(binaryMode) {
+        return;  // Only send binary when in binary mode
+    }
     int len = strlen(str);
     uint32_t byte_count;
     uint8_t* byte_ptr = (uint8_t*)str;
@@ -74,6 +76,51 @@ void sendString(const char* str, bool isCDC=false) {
         len-=MAX_PACKET_SIZE_EPBULK;
         byte_ptr+=byte_count;
     }
+}
+
+uint8_t* binbuffer;
+uint8_t* cobsbuffer;
+
+void sendBytes(const uint8_t* buf, int len, bool isCDC=false) {
+    if(!binaryMode) {
+        return;  // Only send text/json when not in binary mode
+    }
+    uint32_t byte_count;
+    uint8_t* byte_ptr = (uint8_t*)buf;
+
+    while(len>0) {
+        byte_count = MIN(MAX_PACKET_SIZE_EPBULK, len);
+        webUSB.write(byte_ptr, byte_count);
+        len-=MAX_PACKET_SIZE_EPBULK;
+        byte_ptr+=byte_count;
+    }
+}
+
+// From https://en.wikipedia.org/wiki/Consistent_Overhead_Byte_Stuffing
+
+#define StartBlock()	(code_ptr = dst++, code = 1)
+#define FinishBlock()	(*code_ptr = code)
+
+size_t StuffData(const uint8_t *ptr, size_t length, uint8_t *dst)
+{
+	const uint8_t *start = dst, *end = ptr + length;
+	uint8_t code, *code_ptr; /* Where to insert the leading count */
+
+	StartBlock();
+	while (ptr < end) {
+		if (code != 0xFF) {
+			uint8_t c = *ptr++;
+			if (c != 0) {
+				*dst++ = c;
+				code++;
+				continue;
+			}
+		}
+		FinishBlock();
+		StartBlock();
+	}
+	FinishBlock();
+	return dst - start;
 }
 
 void sendHardwareInformation() {
@@ -137,11 +184,17 @@ void handleCMD(uint8_t* cmd_buf, uint32_t size) {
         lcd.printf("%4d", params[0]);
 #endif
     } else if (strncmp(cmdPtr,"SETRTE",6) == 0){
+        sscanf(valPtr,"%d",&params[0]);
         setStreamSamplingRate(params[0]);
     } else if (strncmp(cmdPtr,"STRTCH",6) == 0){
         sscanf(valPtr,"%i",&touchStreaming);
     } else if (strncmp(cmdPtr,"STRACC",6) == 0){
         sscanf(valPtr,"%i",&accelerometerStreaming);
+    } else if (strncmp(cmdPtr,"SETBIN",6) == 0){
+        accelerometerStreaming = 0;
+        touchStreaming = 0;
+        sscanf(valPtr,"%i",&binaryMode);
+        currentState = IDLE_STATE;
     } else if (strncmp(cmdPtr,"GETINF",6) == 0){
         sendHardwareInformation();
     } else if (strncmp(cmdPtr,"GETLOG",6) == 0){
@@ -154,6 +207,7 @@ void handleCMD(uint8_t* cmd_buf, uint32_t size) {
 
 
 #define MAX_BUF_SIZE 1024
+#define MAX_BIN_MSG_SIZE 64
 
 int count = 0;
 
@@ -171,6 +225,8 @@ int main()
     rbuf_cdc = new uint8_t[MAX_BUF_SIZE];
 
     sbuf = new char[200];
+    binbuffer = new uint8_t[MAX_BIN_MSG_SIZE];
+    cobsbuffer = new uint8_t[MAX_BIN_MSG_SIZE];
 
     accLog = new int16_t[ACC_LOG_SIZE];
 
@@ -346,18 +402,36 @@ int main()
                 touchValue = tsi.readDistance();
             if (accelerometerStreaming)
                 acc.getAccAllAxis(accXYZ);
+            
             // Separate reading and printing for better precision
-            sprintf(sbuf, "{\"datatype\":\"StreamData\",\n\"samplingrate\":%d", _stream_sampling_rate);
-            sendString(sbuf);
-            if (touchStreaming) {
-                sprintf(sbuf, ",\n\"touchsensordata\":%d", touchValue);
+            if(binaryMode) {
+                uint8_t *p = binbuffer;
+                // pack sampling rate, touch and xyz accel - possibly a sequence number from stream start
+                // sampling rate (U16)
+                // touch value (U16)
+                // x-axis (S16) 
+                // y-axis (S16)
+                // z-axis (S16)
+                memset(p, 0, 32);
+                memcpy(p, &_stream_sampling_rate, 2); p+=2;
+                memcpy(p, &touchValue, 2); p+=2;
+                memcpy(p, accXYZ, 6); p+=6;
+                int elen = StuffData(binbuffer, p - binbuffer, cobsbuffer);
+                cobsbuffer[elen] = 0;
+                sendBytes(cobsbuffer, elen+1);
+            } else {
+                sprintf(sbuf, "{\"datatype\":\"StreamData\",\n\"samplingrate\":%d", _stream_sampling_rate);
                 sendString(sbuf);
+                if (touchStreaming) {
+                    sprintf(sbuf, ",\n\"touchsensordata\":%d", touchValue);
+                    sendString(sbuf);
+                }
+                if (accelerometerStreaming) {
+                    sprintf(sbuf, ",\n\"accelerometerdata\":[%d,%d,%d]",accXYZ[0],accXYZ[1],accXYZ[2]);
+                    sendString(sbuf);
+                }
+                sendString("\n}");
             }
-            if (accelerometerStreaming) {
-                sprintf(sbuf, ",\n\"accelerometerdata\":[%d,%d,%d]",accXYZ[0],accXYZ[1],accXYZ[2]);
-                sendString(sbuf);
-            }
-            sendString("\n}");
         } else {
             wait_ms(100);
             loopTimer.reset();  // keep it ready
